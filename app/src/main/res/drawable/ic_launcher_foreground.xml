@@ -1,0 +1,14 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- sóng phía trước -->
+    <path android:pathData="M42.53,51.97 A14,14 0 0,1 65.47,51.97" android:strokeColor="#FFFFFF" android:strokeWidth="3.5" android:strokeLineCap="round" />
+    <path android:pathData="M34.34,46.22 A24,24 0 0,1 73.66,46.22" android:strokeColor="#FF4FC3F7" android:strokeWidth="3.5" android:strokeLineCap="round" />
+    <path android:pathData="M26.15,40.48 A34,34 0 0,1 81.85,40.48" android:strokeColor="#FF29B6F6" android:strokeWidth="3.5" android:strokeLineCap="round" />
+    <!-- sóng phía sau -->
+    <path android:pathData="M65.47,68.03 A14,14 0 0,1 42.53,68.03" android:strokeColor="#FFFFD180" android:strokeWidth="3.5" android:strokeLineCap="round" />
+    <path android:pathData="M73.66,73.78 A24,24 0 0,1 34.34,73.78" android:strokeColor="#FFFFB74D" android:strokeWidth="3.5" android:strokeLineCap="round" />
+    <path android:pathData="M81.85,79.52 A34,34 0 0,1 26.15,79.52" android:strokeColor="#FFFF9800" android:strokeWidth="3.5" android:strokeLineCap="round" />
+    <!-- người nghe -->
+    <path android:pathData="M48,60 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0z" android:fillColor="#FFFFFFFF" />
+</vector>
