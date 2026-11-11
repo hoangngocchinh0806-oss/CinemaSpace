@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -19,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -38,7 +40,7 @@ fun App(openUri: Uri?, onCapture: (Boolean) -> Unit) {
     LaunchedEffect(openUri) { openUri?.let { play(it) } }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { u -> if (u != null) play(u) }
     var tab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Chế độ", "Phòng chiếu", "Loa", "Hiệu ứng", "Capture")
+    val tabs = listOf("Chế độ", "Phòng chiếu", "Loa", "Equalizer", "Chuyển động", "Hiệu ứng", "Capture")
 
     MaterialTheme(colorScheme = darkColorScheme()) {
         Surface(Modifier.fillMaxSize()) {
@@ -58,7 +60,9 @@ fun App(openUri: Uri?, onCapture: (Boolean) -> Unit) {
                         0 -> PresetsTab(st)
                         1 -> RoomTab(st)
                         2 -> MixerTab(st)
-                        3 -> EffectsTab(st)
+                        3 -> EqTab(st)
+                        4 -> MotionTab(st)
+                        5 -> EffectsTab(st)
                         else -> CaptureTab(onCapture)
                     }
                 }
@@ -227,5 +231,154 @@ fun PresetsTab(st: SpatialState) {
             }
             TextButton(onClick = { CustomStore.delete(ctx, n); custom = CustomStore.load(ctx) }) { Text("Xóa") }
         }
+    }
+}
+
+private fun eqSet(o: Offset, w: Float, h: Float) {
+    val top = 28f
+    val bottom = h - 36f
+    val band = (o.x / w * 10f).toInt().coerceIn(0, 9)
+    val frac = ((o.y - top) / (bottom - top)).coerceIn(0f, 1f)
+    val db = Math.round((12f - frac * 24f) * 2f) / 2f
+    SpatialHub.update { copy(eq = eq.put(band, db)) }
+}
+
+@Composable
+fun EqGraph(st: SpatialState) {
+    Canvas(
+        Modifier.fillMaxWidth().height(260.dp).background(Color(0xFF1A1A1A))
+            .pointerInput(Unit) { detectTapGestures { o -> eqSet(o, size.width.toFloat(), size.height.toFloat()) } }
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDragStart = { o -> eqSet(o, size.width.toFloat(), size.height.toFloat()) },
+                    onDrag = { c, _ -> c.consume(); eqSet(c.position, size.width.toFloat(), size.height.toFloat()) }
+                )
+            }
+    ) {
+        val w = size.width
+        val h = size.height
+        val top = 28f
+        val bottom = h - 36f
+        fun yOf(db: Float) = top + (12f - db) / 24f * (bottom - top)
+        val paint = android.graphics.Paint().apply {
+            color = android.graphics.Color.WHITE; textSize = 26f; textAlign = android.graphics.Paint.Align.CENTER
+        }
+        for (g in listOf(-12f, -6f, 0f, 6f, 12f)) {
+            drawLine(if (g == 0f) Color(0x88FFFFFF) else Color(0x22FFFFFF), Offset(0f, yOf(g)), Offset(w, yOf(g)), 1f)
+        }
+        val bw = w / 10f
+        val on = st.eqOn
+        st.eq.forEachIndexed { i, db ->
+            val cx = bw * (i + 0.5f)
+            val y0 = yOf(0f)
+            val y1 = yOf(db)
+            val col = if (!on) Color.Gray else if (db >= 0) Color(0xFFFF9800) else Color(0xFF29B6F6)
+            drawRect(col, Offset(cx - bw * 0.22f, kotlin.math.min(y0, y1)),
+                androidx.compose.ui.geometry.Size(bw * 0.44f, kotlin.math.abs(y1 - y0).coerceAtLeast(2f)))
+            drawCircle(Color.White, 9f, Offset(cx, y1))
+            val nc = drawContext.canvas.nativeCanvas
+            nc.drawText(if (db == 0f) "0" else String.format("%+.1f", db), cx, 20f, paint)
+            nc.drawText(EQ_LABELS[i], cx, h - 8f, paint)
+        }
+    }
+}
+
+@Composable
+fun EqTab(st: SpatialState) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Switch(checked = st.eqOn, onCheckedChange = { v -> SpatialHub.update { copy(eqOn = v) } })
+        Spacer(Modifier.width(8.dp))
+        Text("Bật equalizer 10 dải (Hz)")
+    }
+    Spacer(Modifier.height(8.dp))
+    Text("Chạm hoặc kéo lên/xuống để tăng/giảm từng dải tần (±12 dB). Vuốt ngang để chỉnh nhiều dải liền nhau.", style = MaterialTheme.typography.bodySmall)
+    Spacer(Modifier.height(8.dp))
+    EqGraph(st)
+    Spacer(Modifier.height(8.dp))
+    Text("Trầm: 31-125 Hz  |  Trung: 250 Hz-2 kHz  |  Cao: 4-16 kHz", style = MaterialTheme.typography.bodySmall)
+    Spacer(Modifier.height(8.dp))
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        EQ_PRESETS.forEach { (n, g) ->
+            OutlinedButton(onClick = { SpatialHub.update { copy(eq = g, eqOn = true) } }) { Text(n) }
+        }
+    }
+}
+
+private val BAND_COLORS = listOf(Color(0xFFE53935), Color(0xFFFB8C00), Color(0xFFFDD835), Color(0xFF43A047), Color(0xFF29B6F6))
+
+private fun setBand(b: Int, f: BandMotion.() -> BandMotion) {
+    SpatialHub.update { copy(bands = bands.put(b, bands[b].f())) }
+}
+
+@Composable
+fun MotionRadar() {
+    var tick by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(Unit) { while (true) { withFrameNanos { tick = it } } }
+    Canvas(Modifier.fillMaxWidth().aspectRatio(1f).background(Color(0xFF1A1A1A))) {
+        val t = tick
+        val c = Offset(size.width / 2f, size.height / 2f)
+        val unit = size.width / 2f / 1.4f
+        for (r in listOf(0.5f, 1f)) drawCircle(Color(0x33FFFFFF), unit * r, c, style = Stroke(1f))
+        drawCircle(Color.White, 14f, c)
+        val paint = android.graphics.Paint().apply {
+            color = android.graphics.Color.WHITE; textSize = 26f; textAlign = android.graphics.Paint.Align.CENTER
+        }
+        drawContext.canvas.nativeCanvas.drawText("Trước (màn hình)", c.x, 26f, paint)
+        val live = SpatialHub.live
+        for (b in 0 until 5) {
+            if (live[b * 3 + 2] > 0.5f) {
+                drawCircle(BAND_COLORS[b], 16f, Offset(c.x + live[b * 3] * unit, c.y - live[b * 3 + 1] * unit))
+            }
+        }
+    }
+}
+
+@Composable
+fun MotionTab(st: SpatialState) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Switch(checked = st.motion, onCheckedChange = { v -> SpatialHub.update { copy(motion = v, enabled = enabled || v) } })
+        Spacer(Modifier.width(8.dp))
+        Text("Bật chuyển động theo dải tần")
+    }
+    Spacer(Modifier.height(4.dp))
+    Text("Tách tiếng thành 5 dải tần. Mỗi dải có thể đứng yên hoặc bay quanh đầu bạn liên tục. Nên đeo tai nghe. Dải đang chuyển động được trộn thành mono.", style = MaterialTheme.typography.bodySmall)
+    Spacer(Modifier.height(8.dp))
+    MotionRadar()
+    Spacer(Modifier.height(8.dp))
+    Text("Tốc độ chung: x${String.format("%.1f", st.motionSpeed)}")
+    Slider(value = st.motionSpeed, onValueChange = { v -> SpatialHub.update { copy(motionSpeed = v) } }, valueRange = 0.25f..3f)
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        MOTION_PRESETS.forEach { (n, g) ->
+            OutlinedButton(onClick = {
+                SpatialHub.update {
+                    val on = g.any { it.mode != 0 }
+                    copy(bands = g, motion = on, enabled = enabled || on)
+                }
+            }) { Text(n) }
+        }
+    }
+    for (b in 0 until 5) {
+        val c = st.bands[b]
+        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(12.dp).background(BAND_COLORS[b]))
+            Spacer(Modifier.width(8.dp))
+            Text(BAND_NAMES[b], style = MaterialTheme.typography.titleSmall)
+        }
+        Row(Modifier.horizontalScroll(rememberScrollState()).padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            MODE_NAMES.forEachIndexed { m, n ->
+                FilterChip(selected = c.mode == m, onClick = { setBand(b) { copy(mode = m) } }, label = { Text(n) })
+            }
+        }
+        if (c.mode != 0) {
+            Text("Tốc độ: ${String.format("%.2f", kotlin.math.abs(c.speed))} vòng/giây${if (c.speed < 0) " (ngược chiều)" else ""}")
+            Slider(value = c.speed, onValueChange = { v -> setBand(b) { copy(speed = v) } }, valueRange = -1f..1f)
+            Text("Độ rộng / biên độ: ${(c.width * 100).toInt()}%")
+            Slider(value = c.width, onValueChange = { v -> setBand(b) { copy(width = v) } })
+            Text("Lệch pha: ${c.offset.toInt()}°")
+            Slider(value = c.offset, onValueChange = { v -> setBand(b) { copy(offset = v) } }, valueRange = 0f..360f)
+        }
+        Text("Âm lượng dải: ${(c.level * 100).toInt()}%")
+        Slider(value = c.level, onValueChange = { v -> setBand(b) { copy(level = v) } }, valueRange = 0f..1.5f)
     }
 }
