@@ -57,6 +57,11 @@ object SpatialHub {
     val state = MutableStateFlow(SpatialState())
     /** vị trí hiện tại của 5 dải (x, y, active) để vẽ radar */
     val live = FloatArray(15)
+    /** trạng thái bắt âm thanh và mức âm thanh ra (L, R) */
+    val running = MutableStateFlow(false)
+    /** phát âm đã xử lý ở luồng âm lượng riêng (báo thức) để hạ riêng âm gốc */
+    val separateStream = MutableStateFlow(false)
+    val level = FloatArray(2)
     fun update(f: SpatialState.() -> SpatialState) { state.update { it.f() } }
 }
 
